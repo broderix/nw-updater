@@ -141,8 +141,11 @@ Updater.prototype.check = function() {
 
         if(semver.gt(updateData.version, self.currentVersion)) {
             self.emit('download',updateData.version)
+	        self.emit('checked', true);
             self.updateData = updateData;
             return true;
+        } else {
+	        self.emit('checked', false);
         }
 
         return false;
