@@ -11,15 +11,14 @@ var request = require('request'),
 	crypto = require('crypto'),
 	zip = require('adm-zip'),
 	spawn = require('child_process').spawn,
-	torrentStream = require('torrent-stream');
+	torrentStream = require('torrent-stream'),
+    os = require('os');
 
 var Decompress = require('decompress');
 var events = require('events');
 var util = require('util');
 
-util.inherits(Updater, events.EventEmitter)
-
-;
+util.inherits(Updater, events.EventEmitter);
 
 var CHANNELS = ['stable', 'beta', 'nightly'],
 	FILENAME = 'package.nw.new';
@@ -43,7 +42,10 @@ function Updater(options) {
 	this.options = _.defaults(options || {}, {
 		endpoint: 'http://torrentv.github.io/update.json',
 		channel: 'beta',
-		pubkey: VERIFY_PUBKEY
+		pubkey: VERIFY_PUBKEY,
+		windowsExeUpdate: false,
+        outputDir: false,
+        downloadToTmpDir: false
 	});
 
 	var os = "";
@@ -71,12 +73,15 @@ function Updater(options) {
 
 	this.currentVersion = options.currentVersion;
 
-
-	this.outputDir = process.cwd();
-	if (this.os === "linux" || this.os === "windows") {
-		this.outputDir = process.execPath
-	}
-
+    if (this.options.outputDir === false) {
+        this.outputDir = process.cwd();
+        if (this.os === "linux" || this.os === "windows") {
+            this.outputDir = process.execPath
+        }
+    } else {
+        this.outputDir = this.options.outputDir;
+    }
+    
 	this.updateData = null;
 
 	this.check = this.check.bind(this);
@@ -252,16 +257,12 @@ function installWindows(downloadPath, updateData) {
 }
 
 function installWindows2(downloadPath, updateData) {
-	var outputDir = path.dirname(downloadPath),
-		installDir = path.join(outputDir, 'app');
+	var installDir = path.dirname(downloadPath);
 	var defer = Q.defer();
-
-
 	var decompress = Decompress({mode: '644'})
 		.src(downloadPath)
 		.dest(installDir)
 		.use(Decompress.zip());
-
 	//var pack = new zip(downloadPath);
 	decompress.run(
 		//pack.extractAllToAsync(installDir, true, function(err) {
@@ -278,7 +279,6 @@ function installWindows2(downloadPath, updateData) {
 				});
 			}
 		});
-
 	return defer.promise;
 }
 
@@ -365,7 +365,11 @@ Updater.prototype.install = function (downloadPath) {
 	var os = this.os;
 	var promise;
 	if (os === 'windows') {
-		promise = installWindows;
+		if (this.options.windowsExeUpdate) {
+			promise = installWindows2;
+		} else {
+			promise = installWindows;
+		}
 	} else if (os === 'linux') {
 		promise = installLinux;
 	} else if (os === 'mac') {
@@ -419,7 +423,12 @@ Updater.prototype.displayNotification = function () {
 };
 
 Updater.prototype.update = function () {
-	var outputFile = path.join(path.dirname(this.outputDir), FILENAME);
+    var outputFile;
+	if (this.options.downloadToTmpDir) {
+		outputFile = path.join(path.dirname(os.tmpDir()), FILENAME);
+    } else {
+        outputFile = path.join(path.dirname(this.outputDir), FILENAME);
+    }
 
 	if (this.updateData) {
 		return this.download(this.updateData.updateUrl, outputFile)
@@ -440,7 +449,6 @@ Updater.prototype.update = function () {
 			}
 		})
 	}
-
 };
 
 module.exports = Updater;
